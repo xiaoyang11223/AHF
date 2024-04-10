@@ -1,0 +1,42 @@
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+from pylab import mpl
+import seaborn as sns
+import statsmodels.api as sm
+import random
+from sklearn.metrics import roc_auc_score, accuracy_score, precision_score, recall_score, confusion_matrix,auc,f1_score
+import sklearn.metrics
+from sklearn.utils.class_weight import compute_class_weight
+from sklearn.model_selection import cross_val_score,StratifiedKFold
+from collections import Counter
+import shap
+from sklearn.model_selection import StratifiedKFold, train_test_split
+import joblib
+import catboost as cb
+inputfile = 'D:\\Python\\trainset.csv'
+data2 = pd.read_csv(inputfile)
+x_train=data2.drop(columns=['Status'])
+y_train=data2['Status']
+from sklearn.feature_selection import RFECV
+selector=RFECV(estimator=cb.CatBoostClassifier(),step=1,cv=StratifiedKFold(5),scoring='roc_auc',min_features_to_select=1)
+selector=selector.fit(x_train,y_train)
+print(selector.support_)
+print(selector.ranking_)
+print("optional feature number: %d" % selector.n_features_)
+list=[]
+for i in range(0,30):
+        if selector.ranking_[i]==1:
+            list.append(i)
+print('optional feature：')
+print(x_train.columns[list])
+meanA_col = selector.grid_scores_.mean(axis=1)  
+print(meanA_col)
+plt.figure()
+plt.xlabel("Number of features selected")
+plt.ylabel("Cross validation score (auc)")
+plt.plot(
+    range(1, len(selector.grid_scores_)+1 ),
+    meanA_col,
+)
+plt.show()
