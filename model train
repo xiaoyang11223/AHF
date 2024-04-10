@@ -1,0 +1,193 @@
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+from pylab import mpl
+import seaborn as sns
+import statsmodels.api as sm
+import random
+from sklearn.metrics import roc_auc_score, accuracy_score, precision_score, recall_score, confusion_matrix,auc,f1_score
+import sklearn.metrics
+from sklearn.utils.class_weight import compute_class_weight
+from sklearn.model_selection import cross_val_score,StratifiedKFold,train_test_split
+from collections import Counter
+import joblib
+import catboost as cb
+from sklearn.model_selection import GridSearchCV
+from sklearn import linear_model
+inputfile1 = 'D:\\Python\\trainset.csv' 
+train = pd.read_csv(inputfile1,encoding="gbk") 
+inputfile2 = 'D:\\Python\\testset.csv' 
+test = pd.read_csv(inputfile2,encoding="gbk") 
+x_train=train.drop(columns=['Status'])
+y_train=train['Status']
+x_test=test.drop(columns=['Status'])
+y_test=test['Status']
+from sklearn.datasets import make_classification
+from imblearn.over_sampling import SMOTE
+from imblearn.under_sampling import RandomUnderSampler
+from imblearn.pipeline import Pipeline
+from matplotlib import pyplot
+from numpy import where
+over = SMOTE(random_state=12,sampling_strategy=0.9)
+under = RandomUnderSampler(sampling_strategy=0.7,random_state=123)
+steps = [('u', under),('o', over) ]
+pipeline = Pipeline(steps=steps)
+x_train, y_train = pipeline.fit_resample(x_train, y_train)
+counter = Counter(y_train)
+print(counter)
+
+def auc_ci(f_hat, y_true, n_bootstraps=1000, ci_level=0.95):
+    li = (1. - ci_level)/2
+    ui = 1 - li
+
+    rng = np.random.RandomState(seed=42)
+    bootstrapped_auc = []
+
+    for i in range(n_bootstraps):
+        indices = rng.randint(0, len(f_hat), len(f_hat))
+        auc =roc_auc_score(y_true[indices], f_hat[indices])
+        bootstrapped_auc.append(auc)
+    sorted_scores = np.array(bootstrapped_auc)
+    sorted_scores.sort()
+    confidence_lower = sorted_scores[int(li * len(sorted_scores))]
+    confidence_upper = sorted_scores[int(ui * len(sorted_scores))]
+
+    return confidence_lower, confidence_upper
+print(auc_ci(f_hat=model_cb.predict_proba(x_test)[:,1],y_true=y_test))
+
+
+
+
+
+from sklearn.linear_model import LogisticRegression
+parameters = {'penalty': ['l1', 'l2'],'C': [0.005, 0.05, 0.5, 5,10],'solver':['lbfgs','liblinear']}
+grid_search = GridSearchCV(LogisticRegression(), parameters,  verbose=0, scoring='roc_auc', cv=5)
+grid =grid_search.fit(x_train, y_train)
+print('Optional results：%0.3f' % grid_search.best_score_)
+print('Optimal parameters：\n', grid_search.best_params_)
+
+
+
+model_logit=LogisticRegression(C=0.5,penalty='l2',solver='lbfgs')
+model_logit.fit(x_train,y_train)
+y_pred_logit=model_logit.predict(x_test)
+print('Logistic accuracy:',accuracy_score(y_test,y_pred_logit),'recall_score:',recall_score(y_test,y_pred_logit),
+      'f1_score:',f1_score(y_test,y_pred_logit),'precision:',precision_score(y_test,y_pred_logit))
+print('LR AUC为:',roc_auc_score(y_test,model_logit.predict_proba(x_test)[:,1]))
+tn,fp,fn,tp=confusion_matrix(y_test,y_pred_logit).ravel()
+print('TN,FP,FN,TP, specificity 分别为:',tn,fp,fn,tp,tn/(tn+fp))
+joblib.dump(model_logit, 'D:\\Python\\logit.pkl')
+
+# xgb
+import xgboost as xgb
+
+'''param_test1 = {'max_depth': range(3, 10, 2), 'min_child_weight': range(2, 7, 2)}
+param_test3 = {'gamma':[i/100.0 for i in range(0,100)]}
+param_test4 = {'subsample':[i/10.0 for i in range(1,10)],'colsample_bytree':[i/10.0 for i in range(1,10)]}
+param_test5 = {'reg_alpha':[0, 0.001, 0.005, 0.01, 0.05]}
+param_test6 = {'learning_rate':[0, 0.001, 0.005, 0.01, 0.05,0.1,0.5,1]}
+gsearch1 = GridSearchCV(estimator=xgb.XGBClassifier( n_estimators=140,max_depth=3,min_child_weight=2,
+                                        gamma=0.58,colsample_bytree=0.5,subsample=0.7,
+                                       objective='binary:logistic',reg_alpha=0.01,
+                                       nthread=4, scale_pos_weight=1, seed=27),
+                        param_grid=param_test6, scoring='roc_auc', n_jobs=4, cv=5)
+gsearch1.fit(x_train, y_train)
+print(gsearch1.best_params_)
+print(gsearch1.best_score_)'''
+
+model_xgb=xgb.XGBClassifier(n_estimators=140,max_depth=3,min_child_weight=2,
+                                        gamma=0.58,colsample_bytree=0.5,subsample=0.7,
+                                       objective='binary:logistic',reg_alpha=0.01,
+                                       nthread=4, scale_pos_weight=1, seed=27)
+model_xgb.fit(x_train,y_train)
+y_pred_xgb=model_xgb.predict(x_test)
+print()
+print('xgb accuracy:',accuracy_score(y_test,y_pred_xgb),'recall:',recall_score(y_test,y_pred_xgb),
+      'f1_score:',f1_score(y_test,y_pred_xgb),'precision:',precision_score(y_test,y_pred_xgb))
+print('xgb AUC为:',roc_auc_score(y_test,model_xgb.predict_proba(x_test,)[:,1]))
+tn,fp,fn,tp=confusion_matrix(y_test,y_pred_xgb).ravel()
+print('TN,FP,FN,TP, specificity 分别为:',tn,fp,fn,tp,tn/(tn+fp))
+joblib.dump(model_xgb, 'D:\\Python\\xgb.pkl')
+
+
+# RF
+from sklearn.ensemble import RandomForestClassifier
+
+'''rf_param1 = {'n_estimators': [100, 200, 400, 800, 1000,1200]}
+rf_param2 = {'min_samples_split': range(2, 22, 1)}
+rf_param3 = {'n_estimators': [100, 200, 400, 800, 1000,1200],'min_samples_split': range(2, 22, 1)}
+rf_param4 = {'max_features': range(5, 35, 1), }
+rf_param5 = {'max_depth': range(1, 22, 1)}
+rf = RandomForestClassifier(n_estimators=1000,min_samples_split=2,max_features=6,max_depth=16,random_state=123)
+rf_search = GridSearchCV(rf,param_grid = rf_param5,cv = 5,scoring="roc_auc",n_jobs= -1)
+rf_search.fit(x_train, y_train)
+print(rf_search.best_params_)
+print(rf_search.best_score_)'''
+
+
+
+model_RF=RandomForestClassifier(n_estimators=1000,min_samples_split=2,max_features=6,max_depth=16,random_state=123)
+model_RF.fit(x_train,y_train)
+y_pred_RF=model_RF.predict(x_test)
+print('RF accuracy:',accuracy_score(y_test,y_pred_RF),'recall:',recall_score(y_test,y_pred_RF),
+      'f1_score',f1_score(y_test,y_pred_RF),'precision:',precision_score(y_test,y_pred_RF))
+print('RF AUC为:',roc_auc_score(y_test,model_RF.predict_proba(x_test,)[:,1]))
+tn,fp,fn,tp=confusion_matrix(y_test,y_pred_RF).ravel()
+print('TN,FP,FN,TP, specificity 分别为:',tn,fp,fn,tp,tn/(tn+fp))
+
+#joblib.dump(model_RF, 'D:\\Python\\RF.pkl')
+
+# Catboost
+import catboost as cb
+'''params={
+   'depth':range(1, 10, 1),
+   'learning_rate':[0.01,0.03,0.05,0.1],
+   'l2_leaf_reg':range(1, 5, 1),
+   'iterations':[100,300,500,1000]
+}
+cb_model=cb.CatBoostClassifier(random_seed=123)
+cb_model=GridSearchCV(cb_model,param_grid = param,scoring='roc_auc',cv=StratifiedKFold(5))
+cb_model.fit(x_train,y_train)
+print(cb_model.best_params_)
+print(cb_model.best_score_)
+'''
+
+model_cb=cb.CatBoostClassifier(depth=9,learning_rate=0.03,l2_leaf_reg=4,iterations=1000,random_seed=123)
+model_cb.fit(x_train,y_train)
+y_pred_cb=model_cb.predict(x_test)
+print(y_pred_cb)
+print('catboost accuracy:',accuracy_score(y_test,y_pred_cb),'recall:',recall_score(y_test,y_pred_cb),'f1_score:',f1_score(y_test,y_pred_cb),'precision:',precision_score(y_test,y_pred_cb))
+print('catboost AUC为:',roc_auc_score(y_test,model_cb.predict_proba(x_test)[:,1]))
+tn,fp,fn,tp=confusion_matrix(y_test,y_pred_cb).ravel()
+print('TN,FP,FN,TP, specificity 分别为:',tn,fp,fn,tp,tn/(tn+fp))
+#joblib.dump(model_cb, 'D:\\Python\\catb.pkl')
+
+
+
+
+
+# lightgbm
+import lightgbm as lgb
+'''arameters = {'n_estimators':[100,200,400,800,1000,1200],
+              'max_depth': range(1, 22, 1),
+              'learning_rate': [0.01, 0.02, 0.05, 0.1, 0.15]
+}
+gbm = lgb.LGBMClassifier(objective='binary',seed=123 )
+gsearch = GridSearchCV(gbm, param_grid=parameters, scoring='roc_auc', cv=5,n_jobs= -1)
+gsearch.fit(x_train, y_train)
+print(gsearch.best_params_)
+print(gsearch.best_score_)'''
+
+from lightgbm import LGBMClassifier
+model_lgb = lgb.LGBMClassifier(learning_rate=0.15,max_depth=4,n_estimators=200,seed=123 )
+
+model_lgb.fit(x_train, y_train)
+y_pred_lgb = model_lgb.predict(x_test)
+print('lgbm accuracy:',accuracy_score(y_test,y_pred_lgb),'recall:',recall_score(y_test,y_pred_lgb),
+      'f1_score:',f1_score(y_test,y_pred_lgb),'precision:',precision_score(y_test,y_pred_lgb))
+print('lgb AUC为:',roc_auc_score(y_test,model_lgb.predict_proba(x_test,)[:,1]))
+tn,fp,fn,tp=confusion_matrix(y_test,y_pred_lgb).ravel()
+print('TN,FP,FN,TP, specificity 分别为:',tn,fp,fn,tp,tn/(tn+fp))
+
+#joblib.dump(model_lgb, 'D:\\Python\\lgbm.pkl')
+
